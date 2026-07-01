@@ -16,6 +16,7 @@
 
   const config = getConfig(clientId);
   const sessionId = getSessionId(clientId);
+  const widgetState = getWidgetState(clientId, sessionId);
   loadStyles(widgetScript);
 
   if (document.readyState === 'loading') {
@@ -76,6 +77,35 @@
     }
   }
 
+  function getWidgetState(id, currentSessionId) {
+    const storageKey = `hmp-widget-state:${id}:${currentSessionId}`;
+    const fallbackState = { storageKey, selectedIntent: null, hasUserMessage: false };
+    try {
+      const storedState = window.localStorage.getItem(storageKey);
+      if (!storedState) return fallbackState;
+      const parsedState = JSON.parse(storedState);
+      return {
+        storageKey,
+        selectedIntent: typeof parsedState.selectedIntent === 'string' ? parsedState.selectedIntent : null,
+        hasUserMessage: parsedState.hasUserMessage === true
+      };
+    } catch (error) {
+      console.warn('[HMP Widget] Stored widget state is unavailable; using in-memory state.', error);
+      return fallbackState;
+    }
+  }
+
+  function persistWidgetState(state) {
+    try {
+      window.localStorage.setItem(state.storageKey, JSON.stringify({
+        selectedIntent: state.selectedIntent,
+        hasUserMessage: state.hasUserMessage
+      }));
+    } catch (error) {
+      console.warn('[HMP Widget] Could not persist widget state.', error);
+    }
+  }
+
   function getPageContext() {
     const heading = document.querySelector('h1');
     const meaningfulParagraph = Array.from(document.querySelectorAll('main p')).find((paragraph) => {
@@ -127,13 +157,20 @@
     const input = root.querySelector('.hmp-widget-input');
     const sendButton = root.querySelector('.hmp-widget-send');
     const typing = root.querySelector('.hmp-widget-typing');
+    const intents = createIntentButtons();
+    const intentButtons = Array.from(intents.querySelectorAll('button'));
 
     root.querySelector('#hmp-widget-title').textContent = config.assistantName;
     launcher.setAttribute('aria-label', `Open chat with ${config.assistantName}`);
     addMessage(messages, config.welcomeMessage, 'assistant');
+    messages.appendChild(intents);
+    setIntentsVisible(!widgetState.hasUserMessage && !widgetState.selectedIntent);
     launcher.addEventListener('click', () => setPanelOpen(panel.hidden));
     closeButton.addEventListener('click', () => setPanelOpen(false));
     form.addEventListener('submit', handleSubmit);
+    intentButtons.forEach((button) => {
+      button.addEventListener('click', () => handleIntentSelect(button));
+    });
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
@@ -164,14 +201,41 @@
       const message = input.value.trim();
       if (!message || input.disabled) return;
       addMessage(messages, message, 'user');
+      widgetState.hasUserMessage = true;
+      persistWidgetState(widgetState);
+      setIntentsVisible(false);
       input.value = '';
       resizeInput();
+      await sendMessage(message, 'chat_message');
+    }
+
+    async function handleIntentSelect(button) {
+      if (input.disabled) return;
+      const message = button.textContent.trim();
+      const selectedIntent = button.dataset.intent;
+      if (!message || !selectedIntent) return;
+      widgetState.selectedIntent = selectedIntent;
+      widgetState.hasUserMessage = true;
+      persistWidgetState(widgetState);
+      setIntentsVisible(false);
+      addMessage(messages, message, 'user');
+      await sendMessage(message, 'intent_selected');
+    }
+
+    async function sendMessage(message, eventType) {
       setLoading(true);
       try {
         const response = await fetch(WEBHOOK_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ clientId, sessionId, message, pageContext: getPageContext() })
+          body: JSON.stringify({
+            clientId,
+            sessionId,
+            message,
+            selectedIntent: widgetState.selectedIntent,
+            eventType,
+            pageContext: getPageContext()
+          })
         });
         if (!response.ok) throw new Error(`Webhook returned ${response.status}`);
         const data = await response.json();
@@ -191,9 +255,37 @@
     function setLoading(isLoading) {
       input.disabled = isLoading;
       sendButton.disabled = isLoading;
+      intentButtons.forEach((button) => {
+        button.disabled = isLoading;
+      });
       typing.hidden = !isLoading;
       if (isLoading) messages.scrollTop = messages.scrollHeight;
     }
+
+    function setIntentsVisible(isVisible) {
+      intents.hidden = !isVisible;
+    }
+  }
+
+  function createIntentButtons() {
+    const intents = document.createElement('div');
+    intents.className = 'hmp-widget-intents';
+    intents.setAttribute('role', 'group');
+    intents.setAttribute('aria-label', 'Start with an option');
+    intents.hidden = true;
+    [
+      ['get_quote', 'Get A Quote'],
+      ['book_appointment', 'Book Appointment'],
+      ['ask_question', 'Ask A Question']
+    ].forEach(([intent, label]) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.intent = intent;
+      button.textContent = label;
+      if (intent === 'book_appointment') button.className = 'hmp-widget-intent-primary';
+      intents.appendChild(button);
+    });
+    return intents;
   }
 
   function addMessage(container, text, sender, isError) {
@@ -208,7 +300,6 @@
   }
 
   // Future feature placeholders:
-  // - intent selection before starting a conversation
   // - suggested replies based on the assistant response
   // - voice mode for speech input and playback
   // - booking flow with date and time selection

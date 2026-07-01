@@ -7,7 +7,7 @@
 .hmp-widget-launcher { width: 62px; height: 62px; display: grid; margin-left: auto; place-items: center; border: 0; border-radius: 50%; color: #fff; background: var(--hmp-widget-theme); box-shadow: 0 14px 34px rgba(36, 107, 254, 0.34); transition: transform 180ms ease, box-shadow 180ms ease; }
 .hmp-widget-launcher:hover { transform: translateY(-2px); box-shadow: 0 17px 40px rgba(36, 107, 254, 0.42); }
 .hmp-widget-launcher:focus-visible, 
-.hmp-widget-close:focus-visible, .hmp-widget-send:focus-visible, .hmp-widget-input:focus-visible { outline: 3px solid rgba(36, 107, 254, 0.3); outline-offset: 3px; }
+.hmp-widget-close:focus-visible, .hmp-widget-send:focus-visible, .hmp-widget-input:focus-visible, .hmp-widget-intents button:focus-visible { outline: 3px solid rgba(36, 107, 254, 0.3); outline-offset: 3px; }
 .hmp-widget-launcher svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; }
 .hmp-widget-launcher-close, .hmp-widget-is-open .hmp-widget-chat-icon { display: none; }
 .hmp-widget-is-open .hmp-widget-launcher-close { display: block; }
@@ -33,14 +33,21 @@
 }
 .hmp-widget-close:hover { background: rgba(255, 255, 255, 0.14); }
 .hmp-widget-close svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-width: 2; }
-.hmp-widget-messages { flex: 1; overflow-x: hidden; overflow-y: auto; padding: 20px 16px 8px; background: #f8fafc; scroll-behavior: smooth; }
-.hmp-widget-message { display: flex; margin: 0 0 13px; }
+.hmp-widget-messages { flex: 1; overflow-x: hidden; overflow-y: auto; padding: 18px 16px 6px; background: #f8fafc; scroll-behavior: smooth; }
+.hmp-widget-message { display: flex; margin: 0 0 10px; }
 .hmp-widget-message p { max-width: 82%; margin: 0; padding: 11px 14px; border-radius: 16px; font-family: inherit; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; white-space: pre-wrap; }
 .hmp-widget-message-assistant { justify-content: flex-start; }
 .hmp-widget-message-assistant p { border: 1px solid var(--hmp-widget-border); border-bottom-left-radius: 5px; color: var(--hmp-widget-text); background: #fff; }
 .hmp-widget-message-user { justify-content: flex-end; }
 .hmp-widget-message-user p { border-bottom-right-radius: 5px; color: #fff; background: var(--hmp-widget-theme); }
 .hmp-widget-message-error p { color: #9b2c2c; background: #fff5f5; border-color: #fed7d7; }
+.hmp-widget-intents { display: flex; gap: 7px; align-items: stretch; margin: -2px 0 8px; }
+.hmp-widget-intents button { min-width: 0; min-height: 34px; flex: 1; padding: 6px 7px; border: 1px solid var(--hmp-widget-border); border-radius: 22px; color: var(--hmp-widget-theme); background: rgba(255, 255, 255, 0.92); box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05); font-family: inherit; font-size: 12px; font-weight: 700; line-height: 1.15; text-align: center; white-space: normal; overflow-wrap: anywhere; transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, color 160ms ease, transform 160ms ease; }
+.hmp-widget-intents button:hover { border-color: var(--hmp-widget-theme); background: #fff; box-shadow: 0 6px 14px rgba(16, 24, 40, 0.09); transform: translateY(-1px); }
+.hmp-widget-intents button:active { box-shadow: 0 1px 3px rgba(16, 24, 40, 0.08); transform: translateY(0) scale(0.98); }
+.hmp-widget-intents button.hmp-widget-intent-primary { border-color: var(--hmp-widget-theme); color: #fff; background: var(--hmp-widget-theme); box-shadow: 0 8px 18px rgba(36, 107, 254, 0.22); }
+.hmp-widget-intents button.hmp-widget-intent-primary:hover { filter: brightness(0.96); box-shadow: 0 10px 22px rgba(36, 107, 254, 0.28); }
+.hmp-widget-intents button:disabled { opacity: 0.6; cursor: not-allowed; box-shadow: none; transform: none; }
 .hmp-widget-typing { align-items: center; gap: 4px; padding: 8px 20px 13px; background: #f8fafc; }
 .hmp-widget-typing:not([hidden]) { display: flex; }
 .hmp-widget-typing span { width: 7px; height: 7px; border-radius: 50%; background: #98a2b3; animation: hmp-widget-bounce 1.1s infinite ease-in-out; }
@@ -57,5 +64,5 @@
 .hmp-widget-send:disabled { opacity: 0.55; cursor: not-allowed; }
 .hmp-widget-send svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; }
 .hmp-widget-powered { margin: 0; padding: 0 14px 9px; color: var(--hmp-widget-muted); background: #fff; font-family: inherit; font-size: 10px; line-height: 1.4; text-align: center; }
-@media (max-width: 520px) { .hmp-widget-root { right: 12px; bottom: 12px; left: 12px; } .hmp-widget-panel { width: 100%; height: calc(100dvh - 92px); max-height: none; min-height: 0; margin-bottom: 10px; border-radius: 16px; } .hmp-widget-launcher { width: 56px; height: 56px; } }
-@media (prefers-reduced-motion: reduce) { .hmp-widget-panel, .hmp-widget-typing span { animation: none; } .hmp-widget-launcher { transition: none; } .hmp-widget-messages { scroll-behavior: auto; } }
+@media (max-width: 520px) { .hmp-widget-root { right: 12px; bottom: 12px; left: 12px; } .hmp-widget-panel { width: 100%; height: calc(100dvh - 92px); max-height: none; min-height: 0; margin-bottom: 10px; border-radius: 16px; } .hmp-widget-launcher { width: 56px; height: 56px; } .hmp-widget-intents { flex-direction: column; } }
+@media (prefers-reduced-motion: reduce) { .hmp-widget-panel, .hmp-widget-typing span { animation: none; } .hmp-widget-launcher, .hmp-widget-intents button { transition: none; } .hmp-widget-messages { scroll-behavior: auto; } }
