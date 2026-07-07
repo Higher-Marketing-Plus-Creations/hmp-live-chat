@@ -159,12 +159,13 @@
     const typing = root.querySelector('.hmp-widget-typing');
     const intents = createIntentButtons();
     const intentButtons = Array.from(intents.querySelectorAll('button'));
+    let isPanelOpen = false;
+    root.insertBefore(intents, launcher);
 
     root.querySelector('#hmp-widget-title').textContent = config.assistantName;
     launcher.setAttribute('aria-label', `Open chat with ${config.assistantName}`);
     addMessage(messages, config.welcomeMessage, 'assistant');
-    messages.appendChild(intents);
-    setIntentsVisible(!widgetState.hasUserMessage && !widgetState.selectedIntent);
+    updateCTAVisibility();
     launcher.addEventListener('click', () => setPanelOpen(panel.hidden));
     closeButton.addEventListener('click', () => setPanelOpen(false));
     form.addEventListener('submit', handleSubmit);
@@ -183,8 +184,10 @@
     });
 
     function setPanelOpen(isOpen) {
+      isPanelOpen = isOpen;
       panel.hidden = !isOpen;
       root.classList.toggle('hmp-widget-is-open', isOpen);
+      updateCTAVisibility();
       launcher.setAttribute('aria-expanded', String(isOpen));
       launcher.setAttribute('aria-label', isOpen ? 'Close chat' : `Open chat with ${config.assistantName}`);
       if (isOpen) window.setTimeout(() => input.focus(), 50);
@@ -203,7 +206,7 @@
       addMessage(messages, message, 'user');
       widgetState.hasUserMessage = true;
       persistWidgetState(widgetState);
-      setIntentsVisible(false);
+      updateCTAVisibility();
       input.value = '';
       resizeInput();
       await sendMessage(message, 'chat_message');
@@ -217,7 +220,7 @@
       widgetState.selectedIntent = selectedIntent;
       widgetState.hasUserMessage = true;
       persistWidgetState(widgetState);
-      setIntentsVisible(false);
+      setPanelOpen(true);
       addMessage(messages, message, 'user');
       await sendMessage(message, 'intent_selected');
     }
@@ -262,8 +265,11 @@
       if (isLoading) messages.scrollTop = messages.scrollHeight;
     }
 
-    function setIntentsVisible(isVisible) {
-      intents.hidden = !isVisible;
+    function updateCTAVisibility() {
+      const hasConversationStarted = widgetState.hasUserMessage || Boolean(widgetState.selectedIntent);
+      const shouldShowCTAButtons = !isPanelOpen && !hasConversationStarted;
+      intents.hidden = !shouldShowCTAButtons;
+      root.classList.toggle('hmp-widget-has-intents', shouldShowCTAButtons);
     }
   }
 
