@@ -288,7 +288,6 @@
       button.type = 'button';
       button.dataset.intent = intent;
       button.textContent = label;
-      if (intent === 'book_appointment') button.className = 'hmp-widget-intent-primary';
       intents.appendChild(button);
     });
     return intents;
