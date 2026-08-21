@@ -3,6 +3,11 @@
 
   const WIDGET_SELECTOR = 'script[data-client-id]';
   const WEBHOOK_URL = 'https://hmp.app.n8n.cloud/webhook/hmp-conversation-engine';
+  const REALTIME_SESSION_ENDPOINT = 'https://crm.highermarketingplusprojects.com/api/realtime/session';
+  const VOICE_CONTEXT_ENDPOINT = 'https://hmp.app.n8n.cloud/webhook/voice-runtime-context';
+  const VOICE_TURN_ENDPOINT = 'https://hmp.app.n8n.cloud/webhook/voice-conversation-turn';
+  const VOICE_LEAD_PROCESSING_ENDPOINT = 'https://hmp.app.n8n.cloud/webhook/voice-lead-processing';
+  const REALTIME_CALLS_URL = 'https://api.openai.com/v1/realtime/calls';
   const FALLBACK_MESSAGE = 'Sorry, I could not reach the assistant right now. Please try again.';
 
   if (document.getElementById('hmp-widget-root')) return;
@@ -38,6 +43,10 @@
       assistantName: dataset.assistantName || 'HMP Assistant',
       welcomeMessage: dataset.welcomeMessage || 'Hi there! How can I assist you today?',
       themeColor: dataset.themeColor || '#050816',
+      realtimeSessionEndpoint: dataset.realtimeSessionEndpoint || REALTIME_SESSION_ENDPOINT,
+      voiceContextEndpoint: dataset.voiceContextEndpoint || VOICE_CONTEXT_ENDPOINT,
+      voiceTurnEndpoint: dataset.voiceTurnEndpoint || VOICE_TURN_ENDPOINT,
+      voiceLeadProcessingEndpoint: dataset.voiceLeadProcessingEndpoint || VOICE_LEAD_PROCESSING_ENDPOINT,
       fallbackMessage: dataset.fallbackMessage || FALLBACK_MESSAGE
     };
   }
@@ -136,11 +145,30 @@
         </header>
         <div class="hmp-widget-messages" role="log" aria-live="polite" aria-relevant="additions"></div>
         <div class="hmp-widget-typing" role="status" aria-label="Assistant is typing" hidden><span></span><span></span><span></span></div>
+        <div class="hmp-widget-voice-mode" aria-live="polite" hidden>
+          <div class="hmp-widget-voice-visual" aria-hidden="true">
+            <span class="hmp-widget-voice-ring"></span>
+            <span class="hmp-widget-voice-ring"></span>
+            <span class="hmp-widget-voice-core"></span>
+            <span class="hmp-widget-voice-bars"><i></i><i></i><i></i><i></i></span>
+          </div>
+          <div class="hmp-widget-voice-copy">
+            <p class="hmp-widget-voice-mode-status">Starting voice...</p>
+            <p class="hmp-widget-voice-mode-helper">Keep this window open while you talk.</p>
+          </div>
+          <div class="hmp-widget-voice-controls">
+            <button class="hmp-widget-voice-end" type="button" aria-label="End voice conversation"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.8 19.8 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.8 19.8 0 012.1 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.13.96.35 1.9.66 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.91.31 1.85.53 2.81.66A2 2 0 0122 16.92z"/></svg><span>End Voice</span></button>
+            <button class="hmp-widget-voice-back" type="button" aria-label="Back to chat">Back to Chat</button>
+          </div>
+        </div>
         <form class="hmp-widget-form">
           <label class="hmp-widget-sr-only" for="hmp-widget-input">Type your message</label>
           <textarea id="hmp-widget-input" class="hmp-widget-input" rows="1" maxlength="2000" placeholder="Type your message..." required></textarea>
+          <button class="hmp-widget-voice" type="button" aria-label="Start voice conversation" title="Start voice conversation"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 00-3 3v6a3 3 0 006 0V6a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><path d="M12 19v3"/><path d="M8 22h8"/></svg></button>
           <button class="hmp-widget-send" type="submit" aria-label="Send message"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg></button>
         </form>
+        <p class="hmp-widget-voice-status" role="status" aria-live="polite" hidden></p>
+        <audio class="hmp-widget-remote-audio" autoplay playsinline hidden></audio>
         <p class="hmp-widget-powered">Powered by HMP Assistant</p>
       </section>
       <button class="hmp-widget-launcher" type="button" aria-expanded="false" aria-controls="hmp-widget-panel" aria-label="Open chat">
@@ -155,11 +183,30 @@
     const messages = root.querySelector('.hmp-widget-messages');
     const form = root.querySelector('.hmp-widget-form');
     const input = root.querySelector('.hmp-widget-input');
+    const voiceButton = root.querySelector('.hmp-widget-voice');
+    const voiceStatus = root.querySelector('.hmp-widget-voice-status');
+    const voiceMode = root.querySelector('.hmp-widget-voice-mode');
+    const voiceModeStatus = root.querySelector('.hmp-widget-voice-mode-status');
+    const voiceModeHelper = root.querySelector('.hmp-widget-voice-mode-helper');
+    const voiceEndButton = root.querySelector('.hmp-widget-voice-end');
+    const voiceBackButton = root.querySelector('.hmp-widget-voice-back');
+    const remoteAudio = root.querySelector('.hmp-widget-remote-audio');
     const sendButton = root.querySelector('.hmp-widget-send');
     const typing = root.querySelector('.hmp-widget-typing');
     const intents = createIntentButtons();
     const intentButtons = Array.from(intents.querySelectorAll('button'));
     let isPanelOpen = false;
+    let voiceState = 'idle';
+    let voicePeerConnection = null;
+    let voiceDataChannel = null;
+    let voiceMediaStream = null;
+    let voiceRemoteStream = null;
+    let voicePeerConnectedResolve = null;
+    let voiceDataChannelOpenResolve = null;
+    let voiceResponseAudioActive = false;
+    let remoteAudioPlayAttempts = 0;
+    const persistedVoiceTurnIds = new Set();
+    const processedVoiceLeadTurnIds = new Set();
     root.insertBefore(intents, launcher);
 
     root.querySelector('#hmp-widget-title').textContent = config.assistantName;
@@ -169,6 +216,9 @@
     launcher.addEventListener('click', () => setPanelOpen(panel.hidden));
     closeButton.addEventListener('click', () => setPanelOpen(false));
     form.addEventListener('submit', handleSubmit);
+    voiceButton.addEventListener('click', handleVoiceButtonClick);
+    voiceEndButton.addEventListener('click', () => stopVoiceSession());
+    voiceBackButton.addEventListener('click', () => stopVoiceSession());
     intentButtons.forEach((button) => {
       button.addEventListener('click', () => handleIntentSelect(button));
     });
@@ -182,6 +232,7 @@
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape' && !panel.hidden) setPanelOpen(false);
     });
+    window.addEventListener('beforeunload', () => stopVoiceSession());
 
     function setPanelOpen(isOpen) {
       isPanelOpen = isOpen;
@@ -191,7 +242,10 @@
       launcher.setAttribute('aria-expanded', String(isOpen));
       launcher.setAttribute('aria-label', isOpen ? 'Close chat' : `Open chat with ${config.assistantName}`);
       if (isOpen) window.setTimeout(() => input.focus(), 50);
-      else launcher.focus();
+      else {
+        stopVoiceSession();
+        launcher.focus();
+      }
     }
 
     function resizeInput() {
@@ -263,6 +317,442 @@
       });
       typing.hidden = !isLoading;
       if (isLoading) messages.scrollTop = messages.scrollHeight;
+    }
+
+    async function handleVoiceButtonClick() {
+      if (isVoiceSessionActive()) {
+        stopVoiceSession();
+        return;
+      }
+
+      await startVoiceSession();
+    }
+
+    async function startVoiceSession() {
+      if (isVoiceSessionActive()) return;
+
+      if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+        setVoiceState('error');
+        return;
+      }
+      if (typeof RTCPeerConnection !== 'function') {
+        setVoiceState('error');
+        return;
+      }
+
+      setVoiceState('connecting');
+      console.info('[HMP Widget] Realtime voice connecting.');
+
+      try {
+        voiceMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        attemptRemoteAudioPlayback();
+        const runtimeContextPromise = getVoiceRuntimeContext();
+        const realtimeSession = await getRealtimeSession();
+        await connectRealtimeVoice(realtimeSession, runtimeContextPromise);
+      } catch (error) {
+        console.error('[HMP Widget] Realtime voice setup failed.', {
+          message: error instanceof Error ? error.message : 'Unknown error'
+        });
+        stopVoiceSession('error');
+      }
+    }
+
+    async function getRealtimeSession() {
+      const pageContext = getPageContext();
+      const response = await fetch(config.realtimeSessionEndpoint, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          client_id: clientId,
+          session_id: sessionId,
+          current_url: pageContext.currentUrl,
+          page_title: pageContext.pageTitle
+        })
+      });
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(data && data.message ? data.message : `Realtime session endpoint returned ${response.status}`);
+      }
+      if (!data || data.success !== true) {
+        throw new Error('Realtime session endpoint returned an unsuccessful response.');
+      }
+      if (!data.data || typeof data.data.client_secret !== 'string' || !data.data.client_secret) {
+        throw new Error('Realtime session endpoint returned an invalid client secret.');
+      }
+
+      return {
+        clientSecret: data.data.client_secret,
+        expiresAt: data.data.expires_at,
+        model: data.data.model || 'gpt-realtime'
+      };
+    }
+
+    async function getVoiceRuntimeContext() {
+      const pageContext = getPageContext();
+      const response = await fetch(config.voiceContextEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId,
+          sessionId,
+          currentUrl: pageContext.currentUrl,
+          pageTitle: pageContext.pageTitle,
+          pageSummary: pageContext.pageSummary
+        })
+      });
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(data && data.message ? data.message : `Voice context endpoint returned ${response.status}`);
+      }
+      if (!data || data.success !== true) {
+        throw new Error('Voice context endpoint returned an unsuccessful response.');
+      }
+      if (typeof data.instructions !== 'string' || !data.instructions.trim()) {
+        throw new Error('Voice context endpoint returned missing instructions.');
+      }
+
+      console.info('[HMP Widget] Voice runtime context loaded.');
+      return {
+        instructions: data.instructions
+      };
+    }
+
+    async function connectRealtimeVoice(realtimeSession, runtimeContextPromise) {
+      const peerConnectedPromise = new Promise((resolve) => {
+        voicePeerConnectedResolve = resolve;
+      });
+      const dataChannelOpenPromise = new Promise((resolve) => {
+        voiceDataChannelOpenResolve = resolve;
+      });
+      voicePeerConnection = new RTCPeerConnection();
+      voiceRemoteStream = new MediaStream();
+      remoteAudio.srcObject = voiceRemoteStream;
+
+      voicePeerConnection.addEventListener('track', (event) => {
+        const stream = event.streams[0] || new MediaStream([event.track]);
+        stream.getAudioTracks().forEach((track) => {
+          voiceRemoteStream.addTrack(track);
+        });
+        attemptRemoteAudioPlayback(true);
+      });
+
+      voicePeerConnection.addEventListener('connectionstatechange', () => {
+        const state = voicePeerConnection && voicePeerConnection.connectionState;
+        if (state === 'connected') {
+          console.info('[HMP Widget] Realtime voice connected.');
+          if (voicePeerConnectedResolve) {
+            voicePeerConnectedResolve();
+            voicePeerConnectedResolve = null;
+          }
+        } else if (state === 'failed') {
+          stopVoiceSession('error', 'Voice connection failed. Please try again.');
+        } else if (state === 'disconnected') {
+          stopVoiceSession('error', 'Voice disconnected. Please try again.');
+        }
+      });
+
+      voiceDataChannel = voicePeerConnection.createDataChannel('oai-events');
+      voiceDataChannel.addEventListener('open', () => {
+        console.info('[HMP Widget] Realtime data channel open.');
+        if (voiceDataChannelOpenResolve) {
+          voiceDataChannelOpenResolve();
+          voiceDataChannelOpenResolve = null;
+        }
+      });
+      voiceDataChannel.addEventListener('close', () => {
+        console.info('[HMP Widget] Realtime data channel closed.');
+      });
+      voiceDataChannel.addEventListener('error', () => {
+        console.error('[HMP Widget] Realtime data channel error.');
+      });
+      voiceDataChannel.addEventListener('message', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (typeof data.type === 'string') {
+            console.info('[HMP Widget] Realtime event:', data.type);
+            handleRealtimeEvent(data.type);
+            handleVoiceTranscriptEvent(data);
+          }
+        } catch (error) {
+          console.info('[HMP Widget] Realtime event: unreadable_message');
+        }
+      });
+
+      voiceMediaStream.getAudioTracks().forEach((track) => {
+        voicePeerConnection.addTrack(track, voiceMediaStream);
+      });
+
+      const offer = await voicePeerConnection.createOffer();
+      await voicePeerConnection.setLocalDescription(offer);
+
+      const formData = new FormData();
+      formData.append('sdp', offer.sdp);
+      formData.append('session', JSON.stringify({
+        type: 'realtime',
+        model: realtimeSession.model || 'gpt-realtime',
+        output_modalities: ['audio'],
+        audio: {
+          input: {
+            turn_detection: {
+              type: 'server_vad',
+              create_response: true,
+              silence_duration_ms: 1000
+            },
+            transcription: {
+              model: 'gpt-4o-transcribe',
+              language: 'en',
+            }
+          }
+        }
+      }));
+
+      const response = await fetch(REALTIME_CALLS_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${realtimeSession.clientSecret}`
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error(`Realtime WebRTC call returned ${response.status}`);
+      }
+
+      const answerSdp = await response.text();
+      await voicePeerConnection.setRemoteDescription({
+        type: 'answer',
+        sdp: answerSdp
+      });
+
+      const runtimeContext = await runtimeContextPromise;
+      await Promise.all([peerConnectedPromise, dataChannelOpenPromise]);
+      updateRealtimeSessionInstructions(runtimeContext.instructions);
+      console.info('[HMP Widget] Realtime session instructions updated.');
+      console.info('[HMP Widget] Voice assistant ready.');
+      setVoiceState('ready');
+    }
+
+    function updateRealtimeSessionInstructions(instructions) {
+      if (!voiceDataChannel || voiceDataChannel.readyState !== 'open') {
+        throw new Error('Realtime data channel is not open.');
+      }
+
+      voiceDataChannel.send(JSON.stringify({
+        type: 'session.update',
+        session: {
+          type: 'realtime',
+          instructions
+        }
+      }));
+    }
+
+    function stopVoiceSession(nextState) {
+      if (voiceState !== 'idle' && nextState !== 'error') {
+        setVoiceState('ending');
+      }
+      if (voiceDataChannel) {
+        try {
+          voiceDataChannel.close();
+        } catch (error) {}
+        voiceDataChannel = null;
+      }
+      if (voicePeerConnection) {
+        try {
+          voicePeerConnection.close();
+        } catch (error) {}
+        voicePeerConnection = null;
+      }
+      if (voiceMediaStream) {
+        voiceMediaStream.getTracks().forEach((track) => track.stop());
+        voiceMediaStream = null;
+      }
+      if (voiceRemoteStream) {
+        voiceRemoteStream.getTracks().forEach((track) => track.stop());
+        voiceRemoteStream = null;
+      }
+      voicePeerConnectedResolve = null;
+      voiceDataChannelOpenResolve = null;
+      voiceResponseAudioActive = false;
+      remoteAudioPlayAttempts = 0;
+      persistedVoiceTurnIds.clear();
+      processedVoiceLeadTurnIds.clear();
+      remoteAudio.pause();
+      remoteAudio.srcObject = null;
+      setVoiceState(nextState || 'idle');
+    }
+
+    function setVoiceState(nextState) {
+      voiceState = nextState;
+      root.dataset.voiceState = nextState;
+      const isVoiceModeActive = nextState !== 'idle';
+      messages.hidden = isVoiceModeActive;
+      typing.hidden = isVoiceModeActive || typing.hidden;
+      form.hidden = isVoiceModeActive;
+      voiceStatus.hidden = true;
+      voiceMode.hidden = !isVoiceModeActive;
+      voiceButton.disabled = isVoiceModeActive;
+      voiceButton.classList.toggle('hmp-widget-voice-active', isVoiceSessionActive());
+      voiceButton.classList.toggle('hmp-widget-voice-error', nextState === 'error');
+      voiceButton.setAttribute(
+        'aria-label',
+        isVoiceModeActive ? 'Voice mode active' : 'Start voice conversation'
+      );
+      voiceButton.title = isVoiceModeActive ? 'Voice mode active' : 'Start voice conversation';
+      voiceModeStatus.textContent = getVoiceStatusCopy(nextState);
+      voiceModeHelper.textContent = getVoiceHelperCopy(nextState);
+      voiceEndButton.disabled = nextState === 'ending';
+      voiceBackButton.disabled = nextState === 'ending';
+    }
+
+    function isVoiceSessionActive() {
+      return voiceState !== 'idle' && voiceState !== 'error';
+    }
+
+    function handleRealtimeEvent(type) {
+      if (!isVoiceSessionActive()) return;
+      if (type === 'input_audio_buffer.speech_started') {
+        setVoiceState('user_speaking');
+      } else if (type === 'input_audio_buffer.speech_stopped' || type === 'response.created') {
+        setVoiceState('assistant_thinking');
+      } else if (type === 'output_audio_buffer.started') {
+        voiceResponseAudioActive = true;
+        setVoiceState('assistant_speaking');
+        attemptRemoteAudioPlayback(true);
+      } else if (type === 'output_audio_buffer.stopped') {
+        voiceResponseAudioActive = false;
+        setVoiceState('ready');
+      } else if (type === 'response.done' && !voiceResponseAudioActive) {
+        setVoiceState('ready');
+      } else if (type === 'error') {
+        setVoiceState('error');
+      }
+    }
+
+    function handleVoiceTranscriptEvent(data) {
+      if (data.type === 'conversation.item.input_audio_transcription.completed') {
+        const dedupeKey = `user:${data.item_id || data.event_id || data.type}`;
+        persistVoiceTurn('user', data.transcript, dedupeKey);
+        sendVoiceLeadProcessingTurn(data.transcript, dedupeKey);
+        return;
+      } else if (data.type === 'response.output_audio_transcript.done') {
+        persistVoiceTurn(
+          'assistant',
+          data.transcript,
+          `assistant:${data.response_id || 'unknown_response'}:${data.item_id || data.output_index || data.content_index || data.event_id || data.type}`
+        );
+      }
+    }
+
+    function persistVoiceTurn(role, rawTranscript, dedupeKey) {
+      const message = typeof rawTranscript === 'string' ? rawTranscript.trim() : '';
+      if (!message || persistedVoiceTurnIds.has(dedupeKey)) return;
+
+      persistedVoiceTurnIds.add(dedupeKey);
+      const pageContext = getPageContext();
+
+      fetch(config.voiceTurnEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+        body: JSON.stringify({
+          clientId,
+          sessionId,
+          role,
+          message,
+          currentUrl: pageContext.currentUrl,
+          pageTitle: pageContext.pageTitle,
+          eventType: 'voice_message'
+        })
+      }).then((response) => {
+        if (!response.ok) throw new Error(`Voice turn endpoint returned ${response.status}`);
+        console.info(`[HMP Widget] ${role === 'user' ? 'User' : 'Assistant'} voice turn persisted.`);
+      }).catch((error) => {
+        persistedVoiceTurnIds.delete(dedupeKey);
+        console.warn('[HMP Widget] Voice turn persistence failed.', {
+          message: error instanceof Error ? error.message : 'Unknown error'
+        });
+      });
+    }
+
+    function sendVoiceLeadProcessingTurn(rawTranscript, dedupeKey) {
+      const message = typeof rawTranscript === 'string' ? rawTranscript.trim() : '';
+      if (!message || processedVoiceLeadTurnIds.has(dedupeKey)) return;
+
+      processedVoiceLeadTurnIds.add(dedupeKey);
+      const pageContext = getPageContext();
+
+      fetch(config.voiceLeadProcessingEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId,
+          sessionId,
+          message,
+          currentUrl: pageContext.currentUrl,
+          pageTitle: pageContext.pageTitle,
+          pageSummary: pageContext.pageSummary,
+          eventType: 'voice_message',
+          selectedIntent: null,
+          intent: 'general'
+        })
+      }).then((response) => {
+        if (!response.ok) throw new Error(`Voice lead processing endpoint returned ${response.status}`);
+        console.info('[HMP Widget] User voice lead turn processed.');
+      }).catch((error) => {
+        processedVoiceLeadTurnIds.delete(dedupeKey);
+        console.warn('[HMP Widget] Voice lead processing failed.', {
+          message: error instanceof Error ? error.message : 'Unknown error'
+        });
+      });
+    }
+
+    function attemptRemoteAudioPlayback(resetAttempts) {
+      if (!remoteAudio.srcObject) return;
+      if (resetAttempts) remoteAudioPlayAttempts = 0;
+      remoteAudio.play().then(() => {
+        remoteAudioPlayAttempts = 0;
+      }).catch((error) => {
+        remoteAudioPlayAttempts += 1;
+        console.warn('[HMP Widget] Remote voice playback was not ready yet.', {
+          message: error instanceof Error ? error.message : 'Playback was blocked'
+        });
+        if (remoteAudioPlayAttempts < 2) {
+          window.setTimeout(attemptRemoteAudioPlayback, 250);
+        }
+      });
+    }
+
+    function getVoiceStatusCopy(state) {
+      if (state === 'connecting') return 'Starting voice...';
+      if (state === 'ready') return 'Listening...';
+      if (state === 'user_speaking') return "I'm listening...";
+      if (state === 'assistant_thinking') return 'Thinking...';
+      if (state === 'assistant_speaking') return 'Speaking...';
+      if (state === 'ending') return 'Ending voice...';
+      if (state === 'error') return 'Voice connection ran into a problem.';
+      return '';
+    }
+
+    function getVoiceHelperCopy(state) {
+      if (state === 'connecting') return 'Getting your assistant ready.';
+      if (state === 'ready') return 'Ask a question whenever you are ready.';
+      if (state === 'user_speaking') return 'Keep talking. I will respond when you pause.';
+      if (state === 'assistant_thinking') return 'One moment.';
+      if (state === 'assistant_speaking') return 'You can interrupt by speaking.';
+      if (state === 'ending') return 'Returning to chat.';
+      if (state === 'error') return 'End voice and return to chat, then try again.';
+      return '';
+    }
+
+    function getVoiceErrorMessage(error) {
+      if (error && error.name === 'NotAllowedError') return 'Microphone permission was denied.';
+      if (error && error.name === 'NotFoundError') return 'No microphone was found.';
+      if (error && error.name === 'NotReadableError') return 'The microphone could not be started.';
+      return 'Voice could not connect. Please try again.';
     }
 
     function updateCTAVisibility() {
