@@ -9,6 +9,14 @@
   const VOICE_LEAD_PROCESSING_ENDPOINT = 'https://hmp.app.n8n.cloud/webhook/voice-lead-processing';
   const REALTIME_CALLS_URL = 'https://api.openai.com/v1/realtime/calls';
   const FALLBACK_MESSAGE = 'Sorry, I could not reach the assistant right now. Please try again.';
+  const VOICE_AUDIO_CONSTRAINTS = {
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+      channelCount: { ideal: 1 }
+    }
+  };
 
   if (document.getElementById('hmp-widget-root')) return;
 
@@ -344,7 +352,7 @@
       console.info('[HMP Widget] Realtime voice connecting.');
 
       try {
-        voiceMediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        voiceMediaStream = await navigator.mediaDevices.getUserMedia(VOICE_AUDIO_CONSTRAINTS);
         attemptRemoteAudioPlayback();
         const runtimeContextPromise = getVoiceRuntimeContext();
         const realtimeSession = await getRealtimeSession();
@@ -498,9 +506,16 @@
         output_modalities: ['audio'],
         audio: {
           input: {
+            noise_reduction: {
+              type: 'far_field'
+            },
             turn_detection: {
               type: 'server_vad',
               create_response: true,
+              interrupt_response: true,
+              // A moderate threshold lift rejects room noise without blocking clear barge-in speech.
+              threshold: 0.65,
+              prefix_padding_ms: 500,
               silence_duration_ms: 1000
             },
             transcription: {
