@@ -165,8 +165,8 @@
             <p class="hmp-widget-voice-mode-helper">Keep this window open while you talk.</p>
           </div>
           <div class="hmp-widget-voice-controls">
-            <button class="hmp-widget-voice-end" type="button" aria-label="End voice conversation"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.8 19.8 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.8 19.8 0 012.1 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.13.96.35 1.9.66 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.91.31 1.85.53 2.81.66A2 2 0 0122 16.92z"/></svg><span>End Voice</span></button>
-            <button class="hmp-widget-voice-back" type="button" aria-label="Back to chat">Back to Chat</button>
+            <button class="hmp-widget-voice-end" type="button" aria-label="End voice conversation" title="End voice conversation"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            <button class="hmp-widget-voice-back" type="button" aria-label="Back to chat" title="Back to chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 01-4 4H8l-5 3V7a4 4 0 014-4h10a4 4 0 014 4v8z"/></svg></button>
           </div>
         </div>
         <form class="hmp-widget-form">
@@ -516,7 +516,7 @@
               // A moderate threshold lift rejects room noise without blocking clear barge-in speech.
               threshold: 0.65,
               prefix_padding_ms: 500,
-              silence_duration_ms: 1000
+              silence_duration_ms: 1200
             },
             transcription: {
               model: 'gpt-4o-transcribe',
