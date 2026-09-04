@@ -141,14 +141,17 @@
   function mountWidget() {
     if (document.getElementById('hmp-widget-root')) return;
     const root = document.createElement('div');
+    const assistantPhotoUrl = new URL('../../figma-assets/assistant-photo.jpg', widgetScript.src).href;
     root.id = 'hmp-widget-root';
     root.className = 'hmp-widget-root';
     root.style.setProperty('--hmp-widget-theme', config.themeColor);
+    root.style.setProperty('--hmp-widget-avatar-url', `url("${assistantPhotoUrl}")`);
     root.innerHTML = `
       <section class="hmp-widget-panel" id="hmp-widget-panel" role="dialog" aria-modal="false" aria-labelledby="hmp-widget-title" hidden>
         <header class="hmp-widget-header">
-          <div class="hmp-widget-avatar" aria-hidden="true">S</div>
-          <div class="hmp-widget-header-copy"><h2 id="hmp-widget-title"></h2><p><span class="hmp-widget-status-dot" aria-hidden="true"></span>Online to help</p></div>
+          <div class="hmp-widget-avatar" aria-hidden="true"></div>
+          <div class="hmp-widget-header-copy"><h2 id="hmp-widget-title"></h2><p><span class="hmp-widget-status-dot" aria-hidden="true"></span><span class="hmp-widget-status-text">Online now</span></p></div>
+          <button class="hmp-widget-voice" type="button" aria-label="Start voice conversation" title="Start voice conversation"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 00-3 3v6a3 3 0 006 0V6a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><path d="M12 19v3"/><path d="M8 22h8"/></svg><span>Talk</span></button>
           <button class="hmp-widget-close" type="button" aria-label="Close chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
         </header>
         <div class="hmp-widget-messages" role="log" aria-live="polite" aria-relevant="additions"></div>
@@ -165,23 +168,23 @@
             <p class="hmp-widget-voice-mode-helper">Keep this window open while you talk.</p>
           </div>
           <div class="hmp-widget-voice-controls">
-            <button class="hmp-widget-voice-end" type="button" aria-label="End voice conversation" title="End voice conversation"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            <button class="hmp-widget-voice-end" type="button" aria-label="End voice conversation" title="End voice conversation"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg><span>Stop</span></button>
             <button class="hmp-widget-voice-back" type="button" aria-label="Back to chat" title="Back to chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 01-4 4H8l-5 3V7a4 4 0 014-4h10a4 4 0 014 4v8z"/></svg></button>
           </div>
         </div>
+        <p class="hmp-widget-voice-status" role="status" aria-live="polite" hidden></p>
         <form class="hmp-widget-form">
           <label class="hmp-widget-sr-only" for="hmp-widget-input">Type your message</label>
-          <textarea id="hmp-widget-input" class="hmp-widget-input" rows="1" maxlength="2000" placeholder="Type your message..." required></textarea>
-          <button class="hmp-widget-voice" type="button" aria-label="Start voice conversation" title="Start voice conversation"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 00-3 3v6a3 3 0 006 0V6a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><path d="M12 19v3"/><path d="M8 22h8"/></svg></button>
+          <textarea id="hmp-widget-input" class="hmp-widget-input" rows="1" maxlength="2000" placeholder="Type a message..." required></textarea>
           <button class="hmp-widget-send" type="submit" aria-label="Send message"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg></button>
         </form>
-        <p class="hmp-widget-voice-status" role="status" aria-live="polite" hidden></p>
         <audio class="hmp-widget-remote-audio" autoplay playsinline hidden></audio>
         <p class="hmp-widget-powered">Powered by HMP Assistant</p>
       </section>
       <button class="hmp-widget-launcher" type="button" aria-expanded="false" aria-controls="hmp-widget-panel" aria-label="Open chat">
-        <svg class="hmp-widget-chat-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 01-4 4H8l-5 3V7a4 4 0 014-4h10a4 4 0 014 4v8z"/></svg>
+        <span class="hmp-widget-launcher-avatar" aria-hidden="true"><span class="hmp-widget-launcher-mic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 00-3 3v6a3 3 0 006 0V6a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><path d="M12 19v3"/><path d="M8 22h8"/></svg></span></span>
         <svg class="hmp-widget-launcher-close" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        <span class="hmp-widget-launcher-label">or type</span>
       </button>`;
     document.body.appendChild(root);
 
@@ -204,6 +207,7 @@
     const intents = createIntentButtons();
     const intentButtons = Array.from(intents.querySelectorAll('button'));
     let isPanelOpen = false;
+    let hasAutoStartedVoice = false;
     let voiceState = 'idle';
     let voicePeerConnection = null;
     let voiceDataChannel = null;
@@ -221,7 +225,7 @@
     launcher.setAttribute('aria-label', `Open chat with ${config.assistantName}`);
     addMessage(messages, config.welcomeMessage, 'assistant');
     updateCTAVisibility();
-    launcher.addEventListener('click', () => setPanelOpen(panel.hidden));
+    launcher.addEventListener('click', handleLauncherClick);
     closeButton.addEventListener('click', () => setPanelOpen(false));
     form.addEventListener('submit', handleSubmit);
     voiceButton.addEventListener('click', handleVoiceButtonClick);
@@ -241,6 +245,15 @@
       if (event.key === 'Escape' && !panel.hidden) setPanelOpen(false);
     });
     window.addEventListener('beforeunload', () => stopVoiceSession());
+
+    function handleLauncherClick() {
+      const shouldOpen = panel.hidden;
+      setPanelOpen(shouldOpen);
+      if (shouldOpen && !hasAutoStartedVoice) {
+        hasAutoStartedVoice = true;
+        startVoiceSession();
+      }
+    }
 
     function setPanelOpen(isOpen) {
       isPanelOpen = isOpen;
@@ -607,8 +620,9 @@
       const isVoiceModeActive = nextState !== 'idle';
       messages.hidden = isVoiceModeActive;
       typing.hidden = isVoiceModeActive || typing.hidden;
-      form.hidden = isVoiceModeActive;
-      voiceStatus.hidden = true;
+      form.hidden = false;
+      voiceStatus.hidden = !isVoiceModeActive;
+      voiceStatus.textContent = isVoiceModeActive ? 'You can also type below.' : '';
       voiceMode.hidden = !isVoiceModeActive;
       voiceButton.disabled = isVoiceModeActive;
       voiceButton.classList.toggle('hmp-widget-voice-active', isVoiceSessionActive());
