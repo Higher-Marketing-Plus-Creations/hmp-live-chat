@@ -444,6 +444,8 @@
     }
 
     async function connectRealtimeVoice(realtimeSession, runtimeContextPromise) {
+      // This guard belongs to this new connection, not later UI state changes.
+      let hasSentInitialVoiceGreeting = false;
       const peerConnectedPromise = new Promise((resolve) => {
         voicePeerConnectedResolve = resolve;
       });
@@ -563,6 +565,15 @@
       console.info('[HMP Widget] Realtime session instructions updated.');
       console.info('[HMP Widget] Voice assistant ready.');
       setVoiceState('ready');
+      if (!hasSentInitialVoiceGreeting) {
+        hasSentInitialVoiceGreeting = true;
+        voiceDataChannel.send(JSON.stringify({
+          type: 'response.create',
+          response: {
+            instructions: 'For this opening response only, say exactly: "Hi, how can I help you today?" Do not add anything else.'
+          }
+        }));
+      }
     }
 
     function updateRealtimeSessionInstructions(instructions) {
@@ -620,9 +631,9 @@
       const isVoiceModeActive = nextState !== 'idle';
       messages.hidden = isVoiceModeActive;
       typing.hidden = isVoiceModeActive || typing.hidden;
-      form.hidden = false;
-      voiceStatus.hidden = !isVoiceModeActive;
-      voiceStatus.textContent = isVoiceModeActive ? 'You can also type below.' : '';
+      form.hidden = isVoiceModeActive;
+      voiceStatus.hidden = true;
+      voiceStatus.textContent = '';
       voiceMode.hidden = !isVoiceModeActive;
       voiceButton.disabled = isVoiceModeActive;
       voiceButton.classList.toggle('hmp-widget-voice-active', isVoiceSessionActive());

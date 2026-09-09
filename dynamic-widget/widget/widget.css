@@ -635,7 +635,7 @@
 .hmp-widget-root[data-voice-state="connecting"] .hmp-widget-voice-bars { display: none; }
 .hmp-widget-root[data-voice-state="connecting"] .hmp-widget-voice-mode-status { font-size: 0; }
 .hmp-widget-root[data-voice-state="connecting"] .hmp-widget-voice-mode-status::before {
-  content: "Connecting you to Ava";
+  content: "Connecting...";
   font-size: 21px;
 }
 .hmp-widget-root[data-voice-state="connecting"] .hmp-widget-voice-copy::after {
